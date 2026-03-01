@@ -1,0 +1,16 @@
+[project]
+name = "politiflow"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "beautifulsoup4>=4.14.3",
+    "fastapi>=0.135.0",
+    "httpx>=0.28.1",
+    "jinja2>=3.1.6",
+    "rich>=14.3.3",
+    "sqlmodel>=0.0.37",
+    "typer>=0.24.1",
+    "uvicorn>=0.41.0",
+]
