@@ -4,7 +4,7 @@ from sqlmodel import Field, SQLModel, create_engine
 
 class Poll(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    poll_type: str  # e.g., "Pres. Approval", "Generic Congressional Vote"
+    poll_type: str
     source: str
     source_url: Optional[str] = None
     date_range: str
@@ -19,6 +19,7 @@ class PollAverage(SQLModel, table=True):
     poll_type: str
     positive_avg: float
     negative_avg: float
+    net_avg: float
     date_updated: datetime = Field(default_factory=datetime.utcnow)
 
 sqlite_url = "sqlite:///politiflow.db"

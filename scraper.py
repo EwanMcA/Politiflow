@@ -36,8 +36,7 @@ def scrape_ballotpedia():
     rows = table.find_all('tr')
     
     with Session(engine) as session:
-        for row in rows:
-            # Skip header rows
+        for row in reversed(rows):
             if row.find('th'):
                 continue
 
@@ -45,9 +44,7 @@ def scrape_ballotpedia():
             if not cells:
                 continue
 
-            # Check for average rows: they have class="poll-average-row"
             if 'poll-average-row' in row.get('class', []):
-                # Structure: <td colspan="3">Type (average):</td><td>Pos</td><td>Neg</td>
                 if len(cells) >= 3:
                     text = cells[0].get_text(strip=True)
                     poll_type = text.replace('(average):', '').strip()
@@ -57,12 +54,12 @@ def scrape_ballotpedia():
                     avg = PollAverage(
                         poll_type=poll_type,
                         positive_avg=pos,
-                        negative_avg=neg
+                        negative_avg=neg,
+                        net_avg=round(pos - neg, 1)
                     )
                     session.add(avg)
                 continue
 
-            # Individual poll rows (7 columns)
             if len(cells) == 7:
                 poll_type = cells[0].get_text(strip=True)
                 source_cell = cells[1]
@@ -79,7 +76,6 @@ def scrape_ballotpedia():
                 sample = cells[5].get_text(strip=True)
                 moe = cells[6].get_text(strip=True)
                 
-                # Simple deduplication
                 statement = select(Poll).where(
                     Poll.poll_type == poll_type,
                     Poll.source == source_text,
@@ -99,6 +95,27 @@ def scrape_ballotpedia():
                         margin_of_error=moe
                     )
                     session.add(poll)
+        
+        session.commit()
+
+        # Recalculate averages for all types based on latest 5 polls
+        all_types = session.exec(select(Poll.poll_type).distinct()).all()
+        for t in all_types:
+            latest_polls = session.exec(
+                select(Poll).where(Poll.poll_type == t).order_by(Poll.id.desc()).limit(5)
+            ).all()
+            
+            if latest_polls:
+                avg_pos = round(sum(p.positive_result for p in latest_polls) / len(latest_polls), 1)
+                avg_neg = round(sum(p.negative_result for p in latest_polls) / len(latest_polls), 1)
+                
+                avg = PollAverage(
+                    poll_type=t,
+                    positive_avg=avg_pos,
+                    negative_avg=avg_neg,
+                    net_avg=round(avg_pos - avg_neg, 1)
+                )
+                session.add(avg)
         
         session.commit()
 

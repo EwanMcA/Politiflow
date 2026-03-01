@@ -42,12 +42,23 @@
                 <div class="d-flex justify-content-around align-items-center">
                     <div>
                         <div class="stat-value pos">{{ avg.positive_avg }}%</div>
-                        <div class="small text-muted">Positive</div>
+                        <div class="small text-muted">
+                            {% if avg.poll_type == 'Generic Congressional Vote' %}Democrat{% elif avg.poll_type == 'Pres. Approval' %}Approve{% else %}Positive{% endif %}
+                        </div>
                     </div>
                     <div class="vr"></div>
                     <div>
                         <div class="stat-value neg">{{ avg.negative_avg }}%</div>
-                        <div class="small text-muted">Negative</div>
+                        <div class="small text-muted">
+                            {% if avg.poll_type == 'Generic Congressional Vote' %}Republican{% elif avg.poll_type == 'Pres. Approval' %}Disapprove{% else %}Negative{% endif %}
+                        </div>
+                    </div>
+                    <div class="vr"></div>
+                    <div>
+                        <div class="stat-value {% if avg.net_avg >= 0 %}pos{% else %}neg{% endif %}">
+                            {% if avg.net_avg > 0 %}+{% endif %}{{ avg.net_avg }}
+                        </div>
+                        <div class="small text-muted">Net</div>
                     </div>
                 </div>
                 <div class="mt-3 small text-muted">Updated: {{ avg.date_updated.strftime('%b %d, %H:%M') }}</div>
@@ -57,7 +68,18 @@
     </div>
 
     <div class="table-container">
-        <h3 class="fw-bold mb-4">Latest Individual Polls</h3>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="fw-bold mb-0">Latest Individual Polls</h3>
+            <div class="d-flex align-items-center">
+                <label for="pollFilter" class="me-2 text-muted fw-semibold">Filter by Type:</label>
+                <select class="form-select form-select-sm" id="pollFilter" onchange="filterPolls(this.value)" style="width: auto; min-width: 200px;">
+                    <option value="">All Poll Types</option>
+                    {% for type in poll_types %}
+                    <option value="{{ type }}" {% if type == current_filter %}selected{% endif %}>{{ type }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-light">
@@ -115,6 +137,16 @@ async function syncData() {
         btn.disabled = false;
         btn.innerText = 'Sync Now';
     }
+}
+
+function filterPolls(pollType) {
+    const url = new URL(window.location);
+    if (pollType) {
+        url.searchParams.set('poll_type', pollType);
+    } else {
+        url.searchParams.delete('poll_type');
+    }
+    window.location.href = url.toString();
 }
 </script>
 

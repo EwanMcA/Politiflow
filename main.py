@@ -1,62 +1,59 @@
-import typer
-from rich.console import Console
-from rich.table import Table
+from fastapi import FastAPI, Request, Depends
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 from models import Poll, PollAverage, engine, create_db_and_tables
 from scraper import scrape_ballotpedia
+from typing import List, Optional
 
-app = typer.Typer()
-console = Console()
+app = FastAPI(title="PolitiFlow")
+templates = Jinja2Templates(directory="templates")
 
-@app.command()
-def sync():
-    """Fetch latest polling data from Ballotpedia."""
-    with console.status("[bold green]Scraping Ballotpedia..."):
-        scrape_ballotpedia()
-    console.print("[bold green]Success![/bold green] Database updated.")
-
-@app.command()
-def show(limit: int = 10):
-    """Display latest polling data and averages."""
-    create_db_and_tables()
+def get_session():
     with Session(engine) as session:
-        # Show averages
-        averages = session.exec(select(PollAverage).order_by(PollAverage.date_updated.desc())).all()
-        if averages:
-            table = Table(title="Polling Averages")
-            table.add_column("Type", style="cyan")
-            table.add_column("Positive (%)", style="green")
-            table.add_column("Negative (%)", style="red")
-            
-            # Show most recent per type
-            seen_types = set()
-            for avg in averages:
-                if avg.poll_type not in seen_types:
-                    table.add_row(avg.poll_type, str(avg.positive_avg), str(avg.negative_avg))
-                    seen_types.add(avg.poll_type)
-            console.print(table)
+        yield session
 
-        # Show individual polls
-        polls = session.exec(select(Poll).order_by(Poll.created_at.desc()).limit(limit)).all()
-        if polls:
-            table = Table(title=f"Latest {limit} Individual Polls")
-            table.add_column("Type", style="cyan")
-            table.add_column("Source", style="magenta")
-            table.add_column("Date", style="yellow")
-            table.add_column("Pos/Neg", style="white")
-            table.add_column("MOE", style="dim")
+@app.on_event("startup")
+def on_startup():
+    create_db_and_tables()
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request, poll_type: Optional[str] = None, session: Session = Depends(get_session)):
+    averages_raw = session.exec(select(PollAverage).order_by(PollAverage.id.desc())).all()
+    
+    latest_averages = {}
+    for a in averages_raw:
+        if a.poll_type not in latest_averages:
+            latest_averages[a.poll_type] = a
             
-            for p in polls:
-                table.add_row(
-                    p.poll_type, 
-                    p.source, 
-                    p.date_range, 
-                    f"{p.positive_result}/{p.negative_result}", 
-                    p.margin_of_error
-                )
-            console.print(table)
-        else:
-            console.print("[yellow]No polls found. Run 'sync' first.[/yellow]")
+    highlighted_types = ["Pres. Approval", "Generic Congressional Vote"]
+    
+    averages = []
+    for t in highlighted_types:
+        if t in latest_averages:
+            averages.append(latest_averages[t])
+            
+    poll_types = session.exec(select(Poll.poll_type).distinct()).all()
+
+    query = select(Poll).order_by(Poll.id.desc())
+    if poll_type:
+        query = query.where(Poll.poll_type == poll_type)
+    
+    polls = session.exec(query.limit(20)).all()
+    
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "averages": averages,
+        "polls": polls,
+        "poll_types": poll_types,
+        "current_filter": poll_type
+    })
+
+@app.post("/sync")
+async def sync_data():
+    scrape_ballotpedia()
+    return {"status": "success", "message": "Data synchronized from Ballotpedia."}
 
 if __name__ == "__main__":
-    app()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
