@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from typing import Optional
 from sqlmodel import Field, SQLModel, create_engine
@@ -22,7 +23,9 @@ class PollAverage(SQLModel, table=True):
     net_avg: float
     date_updated: datetime = Field(default_factory=datetime.utcnow)
 
-sqlite_url = "sqlite:///politiflow.db"
+sqlite_file_name = "politiflow.db"
+base_dir = os.path.dirname(os.path.abspath(__file__))
+sqlite_url = f"sqlite:///{os.path.join(base_dir, sqlite_file_name)}"
 engine = create_engine(sqlite_url)
 
 def create_db_and_tables():

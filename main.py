@@ -41,12 +41,24 @@ async def index(request: Request, poll_type: Optional[str] = None, session: Sess
     
     polls = session.exec(query.limit(20)).all()
     
+    # Fetch history for charts (last 100 data points per type)
+    history_data = {}
+    for t in highlighted_types:
+        h = session.exec(
+            select(PollAverage)
+            .where(PollAverage.poll_type == t)
+            .order_by(PollAverage.date_updated.asc())
+            .limit(100)
+        ).all()
+        history_data[t] = list(h)
+
     return templates.TemplateResponse("index.html", {
         "request": request,
         "averages": averages,
         "polls": polls,
         "poll_types": poll_types,
-        "current_filter": poll_type
+        "current_filter": poll_type,
+        "history": history_data
     })
 
 @app.post("/sync")

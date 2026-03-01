@@ -12,6 +12,20 @@ def parse_percentage(value: str) -> float:
     except ValueError:
         return 0.0
 
+def parse_date(date_str: str) -> datetime:
+    try:
+        # Expected format: "MM/DD-MM/DD" or "MM/DD"
+        end_part = date_str.split('-')[-1].strip()
+        current_year = datetime.utcnow().year
+        dt = datetime.strptime(f"{end_part}/{current_year}", "%m/%d/%Y")
+        
+        # If the parsed date is in the future, it likely belongs to previous year
+        if dt > datetime.utcnow():
+            dt = dt.replace(year=current_year - 1)
+        return dt
+    except Exception:
+        return datetime.utcnow()
+
 def scrape_ballotpedia():
     create_db_and_tables()
     
@@ -98,24 +112,29 @@ def scrape_ballotpedia():
         
         session.commit()
 
-        # Recalculate averages for all types based on latest 5 polls
+        # Recalculate historical averages based on parsed dates
         all_types = session.exec(select(Poll.poll_type).distinct()).all()
         for t in all_types:
-            latest_polls = session.exec(
-                select(Poll).where(Poll.poll_type == t).order_by(Poll.id.desc()).limit(5)
+            polls = session.exec(
+                select(Poll).where(Poll.poll_type == t).order_by(Poll.id.asc())
             ).all()
             
-            if latest_polls:
-                avg_pos = round(sum(p.positive_result for p in latest_polls) / len(latest_polls), 1)
-                avg_neg = round(sum(p.negative_result for p in latest_polls) / len(latest_polls), 1)
-                
-                avg = PollAverage(
-                    poll_type=t,
-                    positive_avg=avg_pos,
-                    negative_avg=avg_neg,
-                    net_avg=round(avg_pos - avg_neg, 1)
-                )
-                session.add(avg)
+            if len(polls) >= 5:
+                for i in range(4, len(polls)):
+                    window = polls[i-4:i+1]
+                    avg_pos = round(sum(p.positive_result for p in window) / 5, 1)
+                    avg_neg = round(sum(p.negative_result for p in window) / 5, 1)
+                    
+                    poll_date = parse_date(polls[i].date_range)
+                    
+                    avg = PollAverage(
+                        poll_type=t,
+                        positive_avg=avg_pos,
+                        negative_avg=avg_neg,
+                        net_avg=round(avg_pos - avg_neg, 1),
+                        date_updated=poll_date
+                    )
+                    session.add(avg)
         
         session.commit()
 
