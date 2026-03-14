@@ -1,10 +1,13 @@
+import uvicorn
+
 from fastapi import FastAPI, Request, Depends
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from sqlmodel import Session, select
 from models import Poll, PollAverage, engine, create_db_and_tables
 from scraper import scrape_ballotpedia
-from typing import List, Optional
+from typing import Optional
 
 app = FastAPI(title="PolitiFlow")
 templates = Jinja2Templates(directory="templates")
@@ -50,7 +53,15 @@ async def index(request: Request, poll_type: Optional[str] = None, session: Sess
             .order_by(PollAverage.date_updated.asc())
             .limit(100)
         ).all()
-        history_data[t] = list(h)
+        # Convert to serializable format for JS
+        history_data[t] = [
+            {
+                "date_label": d.date_updated.strftime('%b %d'),
+                "positive_avg": d.positive_avg,
+                "negative_avg": d.negative_avg
+            }
+            for d in h
+        ]
 
     return templates.TemplateResponse("index.html", {
         "request": request,
@@ -66,6 +77,7 @@ async def sync_data():
     scrape_ballotpedia()
     return {"status": "success", "message": "Data synchronized from Ballotpedia."}
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 if __name__ == "__main__":
-    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
